@@ -3,7 +3,7 @@
 // "is this point on a road" helpers the cars, pedestrians and police share.
 
 import { WORLD_W, WORLD_H, ROAD_W, VERTICAL_ROADS, HORIZONTAL_ROADS, BEACH_Y, SEA_Y, PLACES } from './config.js';
-import { makeRng, pick, range, rangeInt, chance } from './random.js';
+import { makeRng, pick, range, rangeInt, chance, hash2 } from './random.js';
 
 const ROOF_COLORS = ['#b08968', '#8d7d6b', '#a87c5f', '#7d8ba0', '#9c8a7a', '#6f7f6a', '#b5a48c'];
 const WALL_COLORS = ['#c9b18c', '#a8b8c4', '#c4a484', '#b8c4b0', '#d0c0a8', '#9fb4c8'];
@@ -11,7 +11,7 @@ const WALL_COLORS = ['#c9b18c', '#a8b8c4', '#c4a484', '#b8c4b0', '#d0c0a8', '#9f
 export function buildCity(seed) {
   const rng = makeRng(seed);
   const city = {
-    buildings: [], // {x, y, w, h, roof, wall, windows, special}
+    buildings: [], // {x, y, w, h, roof, wall, windows, special, shade, winPattern, roofDetail}
     parks: [], // {x, y, w, h, trees: [{x,y,r}]}
     lots: [], // {x, y, w, h} parking lots with parked cars
     trees: [],
@@ -61,6 +61,11 @@ export function buildCity(seed) {
               wall: pick(rng, WALL_COLORS),
               windows: rangeInt(rng, 4, 12),
               special: null,
+              // Visual fields only: hashed from position, never from rng(),
+              // so the city layout stays byte-identical.
+              shade: hash2(bx, by),
+              winPattern: hash2(bx + 7, by + 13),
+              roofDetail: hash2(bx + 31, by + 5),
             });
           }
         }
@@ -83,6 +88,9 @@ export function buildCity(seed) {
     city.buildings.push({
       x: p.x - 70, y: p.y - 50, w: 140, h: 100,
       roof: s.roof, wall: s.color, windows: 10, special: s.key,
+      shade: hash2(p.x, p.y),
+      winPattern: hash2(p.x + 7, p.y + 13),
+      roofDetail: hash2(p.x + 31, p.y + 5),
     });
   }
 

@@ -71,6 +71,14 @@ const PACKAGE_SPOTS = [
   { x: 1400, y: 1800, label: 'Package 3 — Harbor' },
 ];
 
+// Waypoint beacon colour per mission (fare green, heat-wave red, ...).
+const TARGET_COLORS = { 0: '#7dff8a', 1: '#ffd94f', 2: '#ff5a3c', 3: '#7ad9ff', 4: '#ff8ad9', 99: '#7dff8a' };
+
+function coloredTarget(t, index) {
+  if (!t) return t;
+  return { ...t, color: TARGET_COLORS[index] || '#ffd94f' };
+}
+
 export function startMission(state, index) {
   const def = MISSIONS[index];
   const m = {
@@ -101,6 +109,7 @@ export function startMission(state, index) {
     m.target = { x: PLACES.marina.x, y: PLACES.marina.y, label: 'Marina — grab the package' };
     m.timer = 90;
   }
+  m.target = coloredTarget(m.target, index);
   state.mission = m;
   state.audio.missionStart();
   state.message(`Mission: ${def.title} — ${def.client}`, 'info');
@@ -176,7 +185,7 @@ export function updateMission(state, dt) {
       }
       m.stage = 1;
       m.passenger = true;
-      m.target = { x: PLACES.hotel.x, y: PLACES.hotel.y, label: 'Sunset Hotel — drop off Mara' };
+      m.target = coloredTarget({ x: PLACES.hotel.x, y: PLACES.hotel.y, label: 'Sunset Hotel — drop off Mara' }, m.index);
       state.message('Mara is in. Drive her to the Sunset Hotel.', 'info');
     } else if (m.stage === 1 && near(m.target, 80)) {
       completeMission(state);
@@ -186,7 +195,7 @@ export function updateMission(state, dt) {
       const falcon = state.cars.find((c) => c.missionFalcon);
       if (falcon && p.car === falcon) {
         m.stage = 1;
-        m.target = { x: PLACES.spray.x, y: PLACES.spray.y, label: "Luna's Spray & Go" };
+        m.target = coloredTarget({ x: PLACES.spray.x, y: PLACES.spray.y, label: "Luna's Spray & Go" }, m.index);
         state.message('Got the Falcon. Take it to Luna — fast, before the heat finds you.', 'info');
       }
     } else if (near(m.target, 90) && p.car && p.car.missionFalcon) {
@@ -217,7 +226,7 @@ export function updateMission(state, dt) {
         state.audio.cash();
         state.message(`Package ${m.collected}/3 collected (+$25)`, 'good');
         const next = m.packages.find((q) => !q.taken);
-        m.target = next ? { x: next.x, y: next.y, label: next.label } : null;
+        m.target = coloredTarget(next ? { x: next.x, y: next.y, label: next.label } : null, m.index);
         if (m.collected === 3) completeMission(state);
         break;
       }
@@ -227,7 +236,7 @@ export function updateMission(state, dt) {
       m.stage = 1;
       m.timer = 90;
       addHeat(state, 2, 'the package is hot');
-      m.target = { x: 2600, y: 1800, label: 'Palm Beach — the buyer' };
+      m.target = coloredTarget({ x: 2600, y: 1800, label: 'Palm Beach — the buyer' }, m.index);
       state.message('Package grabbed. 90 seconds to Palm Beach — GO!', 'bad');
     } else if (m.stage === 1 && near(m.target, 80)) {
       completeMission(state);
@@ -245,7 +254,7 @@ export function startFare(state) {
   while (to === from) to = spots[Math.floor(rng() * spots.length)];
   state.mission = {
     index: 99, def: { id: 'fare', title: 'Taxi Fare', client: 'Passenger', reward: 100 },
-    stage: 0, timer: 120, target: { x: from.x, y: from.y, label: `${from.name} — pick up the fare` },
+    stage: 0, timer: 120, target: coloredTarget({ x: from.x, y: from.y, label: `${from.name} — pick up the fare` }, 99),
     packages: [], collected: 0, passenger: false, done: false, fareFrom: from, fareTo: to,
   };
   state.audio.missionStart();

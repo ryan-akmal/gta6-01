@@ -27,3 +27,12 @@ export function rangeInt(rng, min, max) {
 export function chance(rng, p) {
   return rng() < p;
 }
+
+// Pure integer hash of a world position into [0, 1): deterministic per-position
+// variation for the renderer. Never touches the rng stream.
+export function hash2(x, y) {
+  let h = (Math.floor(x) * 374761393 + Math.floor(y) * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = (h ^ (h >>> 16)) >>> 0;
+  return h / 4294967296;
+}

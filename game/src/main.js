@@ -86,6 +86,7 @@ function createGame(seedValue) {
       earned: state.stats.earned,
       carsStolen: state.stats.carsStolen,
       muted: state.muted,
+      quality: 'high',
       x: state.player.x,
       y: state.player.y,
     });
@@ -354,6 +355,11 @@ function updatePlaying(dt) {
     const steer = (input.isDown('d') || input.isDown('ArrowRight') ? 1 : 0) - (input.isDown('a') || input.isDown('ArrowLeft') ? 1 : 0);
     const handbrake = input.isDown(' ');
     const { nx, ny } = driveCar(car, throttle, steer, dt, handbrake);
+    // Handbrake at speed screeches the tyres (at most once per 0.35 s).
+    if (handbrake && Math.abs(car.speed) > 60 && state.time - (car.lastSkidAt || 0) > 0.35) {
+      car.lastSkidAt = state.time;
+      audio.skid();
+    }
     const hitHard = moveCar(state, car, nx, ny);
     if (hitHard) {
       audio.crash();

@@ -17,7 +17,9 @@ export function loadSave() {
 
 export function writeSave(data) {
   try {
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    // quality records the visual tier this save was written at; loadSave
+    // ignores fields it does not know, so old saves still load.
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify({ ...data, quality: 'high' }));
     return true;
   } catch {
     return false;

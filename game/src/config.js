@@ -29,6 +29,21 @@ export const COLORS = {
   plaza: '#8d8578',
 };
 
+// Visual polish palette: warm sun, soft shadows, lit windows, lamp glow.
+export const VISUAL = {
+  sunTint: 'rgba(255, 190, 110, 0.05)',
+  vignette: 'rgba(8, 10, 16, 0.22)',
+  shadow: 'rgba(0, 0, 0, 0.28)',
+  asphaltSpeckleDark: 'rgba(0, 0, 0, 0.16)',
+  asphaltSpeckleLight: 'rgba(255, 255, 255, 0.05)',
+  curb: 'rgba(255, 255, 255, 0.22)',
+  tireWear: 'rgba(0, 0, 0, 0.12)',
+  windowLit: '#ffd97a',
+  windowDark: 'rgba(20, 30, 44, 0.55)',
+  lampGlow: 'rgba(255, 205, 110, 0.35)',
+  headlightGlow: 'rgba(255, 233, 168, 0.30)',
+};
+
 export const DISTRICTS = [
   { name: 'Old Town', x: 0, y: 0, w: 1200, h: 800 },
   { name: 'Downtown', x: 1200, y: 0, w: 2000, h: 800 },
@@ -49,14 +64,15 @@ export const PLACES = {
 };
 
 // Vehicle models: top speed (px/s), acceleration, grip and look. All invented names.
+// trim is the side stripe, glass the windshield tint.
 export const CAR_MODELS = {
-  comet: { name: 'Comet', top: 380, accel: 260, grip: 2.6, len: 44, wid: 22, color: '#c94f42', hp: 80 },
-  vortex: { name: 'Vortex', top: 420, accel: 300, grip: 2.8, len: 46, wid: 22, color: '#3f6fb5', hp: 90 },
-  bison: { name: 'Bison', top: 340, accel: 220, grip: 2.2, len: 52, wid: 24, color: '#7a6a4f', hp: 130 },
-  falcon: { name: 'Falcon GT', top: 560, accel: 420, grip: 3.4, len: 46, wid: 22, color: '#d21f2b', hp: 70 },
-  liner: { name: 'Liner Taxi', top: 400, accel: 280, grip: 2.7, len: 48, wid: 22, color: '#e8b923', hp: 90 },
-  cruiser: { name: 'Cruiser', top: 360, accel: 240, grip: 2.5, len: 48, wid: 24, color: '#4f7a5a', hp: 100 },
-  interceptor: { name: 'Interceptor', top: 520, accel: 400, grip: 3.2, len: 48, wid: 23, color: '#1c2733', hp: 110 },
+  comet: { name: 'Comet', top: 380, accel: 260, grip: 2.6, len: 44, wid: 22, color: '#c94f42', trim: '#8a2f26', glass: 'rgba(20,30,44,0.85)', hp: 80 },
+  vortex: { name: 'Vortex', top: 420, accel: 300, grip: 2.8, len: 46, wid: 22, color: '#3f6fb5', trim: '#2a4a7a', glass: 'rgba(18,28,48,0.85)', hp: 90 },
+  bison: { name: 'Bison', top: 340, accel: 220, grip: 2.2, len: 52, wid: 24, color: '#7a6a4f', trim: '#5a4a33', glass: 'rgba(24,30,26,0.85)', hp: 130 },
+  falcon: { name: 'Falcon GT', top: 560, accel: 420, grip: 3.4, len: 46, wid: 22, color: '#d21f2b', trim: '#7a0f16', glass: 'rgba(28,16,20,0.88)', hp: 70 },
+  liner: { name: 'Liner Taxi', top: 400, accel: 280, grip: 2.7, len: 48, wid: 22, color: '#e8b923', trim: '#8a6d1c', glass: 'rgba(24,28,20,0.85)', hp: 90 },
+  cruiser: { name: 'Cruiser', top: 360, accel: 240, grip: 2.5, len: 48, wid: 24, color: '#4f7a5a', trim: '#33523c', glass: 'rgba(16,26,22,0.85)', hp: 100 },
+  interceptor: { name: 'Interceptor', top: 520, accel: 400, grip: 3.2, len: 48, wid: 23, color: '#1c2733', trim: '#e8e8e8', glass: 'rgba(12,18,28,0.9)', hp: 110 },
 };
 
 export const ECONOMY = {

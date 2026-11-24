@@ -27,6 +27,9 @@ export function createInput(canvas) {
   });
   window.addEventListener('blur', () => {
     input.keys = Object.create(null);
+    // A mouse held down across a window blur would otherwise stick firing.
+    input.mouseDown = false;
+    input.mouseClicked = false;
   });
 
   canvas.addEventListener('mousemove', (e) => {

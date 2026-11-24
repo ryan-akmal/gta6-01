@@ -97,6 +97,8 @@ export function updateTraffic(state, dt) {
     if (blocked && car.speed > 30) car.speed -= 300 * dt;
     const { nx, ny } = driveCar(car, throttle, steer, dt, false);
     if (car.speed > car.targetSpeed) car.speed = car.targetSpeed;
+    // Brake lights flare when the car is slowing from speed with no throttle.
+    car.brakeLight = throttle === 0 && Math.abs(car.speed) > 30;
     moveCar(state, car, nx, ny);
     // A traffic car the player shoves off the road finds its way back.
     if (!onRoad(car.x, car.y) && car.speed < 20) {

@@ -51,6 +51,7 @@ function stageChase(state) {
   const falcon = createCar('falcon', 1800, 1032, 0, 'player');
   falcon.missionFalcon = true;
   falcon.speed = 430;
+  falcon.smoke = 0.45;
   state.cars.push(falcon);
   state.player.car = falcon;
   state.player.onFoot = false;
@@ -125,6 +126,7 @@ function stageMission(state) {
 function stageDrive(state) {
   const cruiser = createCar('cruiser', 1200, 2160, 0, 'player');
   cruiser.speed = 210;
+  cruiser.smoke = 0.35;
   state.cars.push(cruiser);
   state.player.car = cruiser;
   state.player.onFoot = false;

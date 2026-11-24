@@ -18,6 +18,7 @@ art, sound and music are original — nothing from Rockstar Games.
 - Wanted level 0–5 stars, with police chases
 - 5 missions with a story, from picking up a passenger to police chases
 - Combat on foot, HUD with minimap, start screen and save
+- Visual polish: soft shadows, warm-lit windows, lamp glow, detailed cars, sea sparkle
 
 ## Controls
 

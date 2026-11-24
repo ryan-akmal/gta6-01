@@ -2,7 +2,8 @@
 // then the HUD with its minimap and the menu screens. The canvas is a logical
 // 1280x720 view scaled to the window; the camera follows the player.
 
-import { WORLD_W, WORLD_H, ROAD_W, VERTICAL_ROADS, HORIZONTAL_ROADS, BEACH_Y, SEA_Y, PLACES, DISTRICTS, CAR_MODELS, COLORS } from './config.js';
+import { WORLD_W, WORLD_H, ROAD_W, VERTICAL_ROADS, HORIZONTAL_ROADS, BEACH_Y, SEA_Y, PLACES, DISTRICTS, CAR_MODELS, COLORS, VISUAL } from './config.js';
+import { hash2 } from './random.js';
 
 export const VIEW_W = 1280;
 export const VIEW_H = 720;
@@ -48,6 +49,28 @@ export function createRenderer(canvas) {
     ctx.closePath();
   }
 
+  // Soft ground shadow: a radial-gradient ellipse that fades to nothing.
+  function shadow(x, y, rx, ry, alpha) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, rx);
+    g.addColorStop(0, `rgba(0, 0, 0, ${alpha})`);
+    g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Warm sun tint + vignette, screen space, after the world and before the HUD.
+  function drawSunTint() {
+    ctx.fillStyle = VISUAL.sunTint;
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.35, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.85);
+    g.addColorStop(0, 'rgba(8, 10, 16, 0)');
+    g.addColorStop(1, VISUAL.vignette);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  }
+
   // --- The world -----------------------------------------------------------
 
   function drawWorld(state) {
@@ -70,13 +93,29 @@ export function createRenderer(canvas) {
     // Beach and sea.
     ctx.fillStyle = COLORS.sand;
     ctx.fillRect(x0, BEACH_Y, x1 - x0, SEA_Y - BEACH_Y);
+    // Wet-sand band where the water meets the beach.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+    ctx.fillRect(x0, SEA_Y - 12, x1 - x0, 12);
     const wave = Math.sin(state.time * 1.4) * 4;
     ctx.fillStyle = COLORS.sea;
     ctx.fillRect(x0, SEA_Y + wave, x1 - x0, WORLD_H - SEA_Y);
+    // Foam line at the water's edge.
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.fillRect(x0, SEA_Y + wave - 3, x1 - x0, 3);
     ctx.fillStyle = COLORS.seaDeep;
     for (let x = Math.floor(x0 / 90) * 90; x < x1; x += 90) {
       ctx.fillRect(x, SEA_Y + 40 + wave, 46, 5);
       ctx.fillRect(x + 30, SEA_Y + 110 + wave, 52, 5);
+    }
+    // Sun sparkle on the sea: deterministic per tile, twinkling with time.
+    for (let x = Math.floor(x0 / 120) * 120; x < x1; x += 120) {
+      for (let y = SEA_Y + 30; y < WORLD_H; y += 90) {
+        const h = hash2(x, y);
+        if (h < 0.4) continue;
+        const tw = 0.25 + 0.45 * (0.5 + 0.5 * Math.sin(state.time * 2 + h * 20));
+        ctx.fillStyle = `rgba(255, 255, 255, ${tw.toFixed(3)})`;
+        ctx.fillRect(x + h * 80, y + hash2(y, x) * 40, 7, 2);
+      }
     }
     // Marina piers.
     ctx.fillStyle = '#8a6f4d';
@@ -90,21 +129,31 @@ export function createRenderer(canvas) {
     for (const prop of state.city.beachProps || []) {
       if (prop.x < x0 || prop.x > x1 || prop.y < y0 || prop.y > y1) continue;
       if (prop.kind === 'palm') {
+        const lean = (hash2(prop.x, prop.y) - 0.5) * 12;
+        shadow(prop.x + 4, prop.y + 2, prop.r + 5, 5, 0.20);
         ctx.strokeStyle = '#7a5a3a';
         ctx.lineWidth = 4;
         ctx.beginPath();
         ctx.moveTo(prop.x, prop.y);
-        ctx.lineTo(prop.x + 6, prop.y - 16);
+        ctx.quadraticCurveTo(prop.x + lean * 0.5, prop.y - 10, prop.x + lean, prop.y - 18);
         ctx.stroke();
+        // Three-layer frond canopy instead of a plain circle.
+        const cx = prop.x + lean;
+        const cy = prop.y - 20;
+        ctx.fillStyle = '#1f5c26';
+        ctx.beginPath();
+        ctx.arc(cx, cy, prop.r, 0, Math.PI * 2);
+        ctx.fill();
         ctx.fillStyle = '#2c7a34';
         ctx.beginPath();
-        ctx.arc(prop.x + 8, prop.y - 18, prop.r, 0, Math.PI * 2);
+        ctx.arc(cx - 3, cy - 3, prop.r * 0.7, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#3f9e46';
         ctx.beginPath();
-        ctx.arc(prop.x + 4, prop.y - 22, prop.r * 0.6, 0, Math.PI * 2);
+        ctx.arc(cx + 2, cy - 5, prop.r * 0.4, 0, Math.PI * 2);
         ctx.fill();
       } else {
+        shadow(prop.x, prop.y + 2, 16, 4, 0.18);
         ctx.strokeStyle = '#8a6f4d';
         ctx.lineWidth = 3;
         ctx.beginPath();
@@ -125,6 +174,9 @@ export function createRenderer(canvas) {
       ctx.fillStyle = COLORS.park;
       roundRect(park.x, park.y, park.w, park.h, 10);
       ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
       ctx.fillStyle = 'rgba(255,255,255,0.12)';
       ctx.fillRect(park.x + 10, park.y + 10, park.w - 20, 6);
     }
@@ -133,6 +185,16 @@ export function createRenderer(canvas) {
       if (lot.x > x1 || lot.y > y1 || lot.x + lot.w < x0 || lot.y + lot.h < y0) continue;
       ctx.fillStyle = '#4a4d52';
       ctx.fillRect(lot.x, lot.y, lot.w, lot.h);
+      // A few oil stains, hashed per lot, never random.
+      for (let i = 0; i < 4; i++) {
+        const hx = hash2(lot.x + i * 53, lot.y);
+        const hy = hash2(lot.x, lot.y + i * 71);
+        if (hx < 0.35) continue;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+        ctx.beginPath();
+        ctx.ellipse(lot.x + 20 + hx * (lot.w - 40), lot.y + 16 + hy * (lot.h - 32), 12, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.strokeStyle = 'rgba(255,255,255,0.35)';
       ctx.lineWidth = 2;
       for (let sx = lot.x + 24; sx < lot.x + lot.w - 20; sx += 52) {
@@ -150,6 +212,39 @@ export function createRenderer(canvas) {
     ctx.fillStyle = COLORS.road;
     for (const rx of VERTICAL_ROADS) ctx.fillRect(rx - ROAD_W / 2, y0, ROAD_W, roadBottom - y0);
     for (const ry of HORIZONTAL_ROADS) ctx.fillRect(x0, ry - ROAD_W / 2, x1 - x0, ROAD_W);
+    // Asphalt speckle, deterministic per 48 px tile, only where a road is.
+    for (let tx = Math.floor(x0 / 48) * 48; tx < x1; tx += 48) {
+      for (let ty = Math.floor(y0 / 48) * 48; ty < roadBottom; ty += 48) {
+        const onRoad = VERTICAL_ROADS.some((rx) => Math.abs(tx + 24 - rx) < ROAD_W / 2)
+          || HORIZONTAL_ROADS.some((ry) => Math.abs(ty + 24 - ry) < ROAD_W / 2);
+        if (!onRoad) continue;
+        const h = hash2(tx, ty);
+        if (h < 0.55) continue;
+        ctx.fillStyle = h < 0.8 ? VISUAL.asphaltSpeckleDark : VISUAL.asphaltSpeckleLight;
+        ctx.fillRect(tx + (h * 40) % 40, ty + (hash2(ty, tx) * 40), 4, 2);
+        ctx.fillRect(tx + (hash2(tx + 9, ty + 3) * 40), ty + (hash2(tx, ty + 11) * 40), 3, 2);
+      }
+    }
+    // Tyre-wear strips down the middle of each lane.
+    ctx.fillStyle = VISUAL.tireWear;
+    for (const rx of VERTICAL_ROADS) {
+      ctx.fillRect(rx - 18, y0, 8, roadBottom - y0);
+      ctx.fillRect(rx + 10, y0, 8, roadBottom - y0);
+    }
+    for (const ry of HORIZONTAL_ROADS) {
+      ctx.fillRect(x0, ry - 18, x1 - x0, 8);
+      ctx.fillRect(x0, ry + 10, x1 - x0, 8);
+    }
+    // Bright curb where asphalt meets sidewalk.
+    ctx.fillStyle = VISUAL.curb;
+    for (const rx of VERTICAL_ROADS) {
+      ctx.fillRect(rx - ROAD_W / 2 - 1, y0, 2, roadBottom - y0);
+      ctx.fillRect(rx + ROAD_W / 2 - 1, y0, 2, roadBottom - y0);
+    }
+    for (const ry of HORIZONTAL_ROADS) {
+      ctx.fillRect(x0, ry - ROAD_W / 2 - 1, x1 - x0, 2);
+      ctx.fillRect(x0, ry + ROAD_W / 2 - 1, x1 - x0, 2);
+    }
     ctx.fillStyle = COLORS.roadLine;
     for (const rx of VERTICAL_ROADS) {
       for (let y = Math.floor(y0 / 48) * 48; y < roadBottom; y += 48) ctx.fillRect(rx - 2, y, 4, 24);
@@ -168,54 +263,109 @@ export function createRenderer(canvas) {
       }
     }
 
-    // Trees.
+    // Trees: trunk, three-layer canopy, ground shadow.
     for (const t of state.city.trees) {
       if (t.x < x0 || t.x > x1 || t.y < y0 || t.y > y1) continue;
+      const h = hash2(t.x, t.y);
+      shadow(t.x, t.y + t.r * 0.5, t.r + 4, t.r * 0.45, 0.20);
+      ctx.fillStyle = '#5a4128';
+      ctx.fillRect(t.x - 2, t.y - 2, 4, 6);
       ctx.fillStyle = '#2c5a24';
       ctx.beginPath();
-      ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+      ctx.arc(t.x, t.y - 4, t.r, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#3f7d33';
       ctx.beginPath();
-      ctx.arc(t.x - 3, t.y - 3, t.r * 0.7, 0, Math.PI * 2);
+      ctx.arc(t.x - 3, t.y - 7, t.r * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#57a047';
+      ctx.beginPath();
+      ctx.arc(t.x + 2 - h * 4, t.y - 9, t.r * 0.4, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Buildings: wall, roof, windows, and a label for the named places.
+    // Buildings: soft base shadow, wall gradient, roof with parapet and
+    // detail, two-state windows (some warm-lit), awning + plaque for specials.
     for (const b of state.city.buildings) {
       if (b.x > x1 || b.y > y1 || b.x + b.w < x0 || b.y + b.h < y0) continue;
-      ctx.fillStyle = 'rgba(0,0,0,0.18)';
-      ctx.fillRect(b.x + 5, b.y + 6, b.w, b.h);
+      shadow(b.x + b.w / 2, b.y + b.h - 2, b.w * 0.55, 10, 0.20);
       ctx.fillStyle = b.wall;
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+      const wg = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.h);
+      wg.addColorStop(0, 'rgba(255, 255, 255, 0.10)');
+      wg.addColorStop(1, 'rgba(0, 0, 0, 0.14)');
+      ctx.fillStyle = wg;
       ctx.fillRect(b.x, b.y, b.w, b.h);
       ctx.fillStyle = b.roof;
       ctx.fillRect(b.x + 5, b.y + 5, b.w - 10, b.h - 10);
-      ctx.fillStyle = 'rgba(255,255,255,0.28)';
+      // Parapet edge around the roof.
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(b.x + 5, b.y + 5, b.w - 10, b.h - 10);
+      // Roof detail (AC box + antenna) on the bigger buildings.
+      if (b.w > 90 && b.h > 70) {
+        const rd = b.roofDetail ?? 0.5;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+        ctx.fillRect(b.x + 12 + rd * (b.w - 40), b.y + 12, 14, 10);
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(b.x + b.w - 16, b.y + 12);
+        ctx.lineTo(b.x + b.w - 16, b.y - 6);
+        ctx.stroke();
+        ctx.fillStyle = '#ff5a3c';
+        ctx.beginPath();
+        ctx.arc(b.x + b.w - 16, b.y - 8, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
       const cols = Math.max(1, Math.floor(b.w / 26));
       const rows = Math.max(1, Math.floor(b.h / 26));
+      const litRatio = 0.30 + ((b.winPattern ?? 0.5) * 0.35);
       for (let i = 0; i < b.windows && i < cols * rows; i++) {
         const wx = b.x + 10 + (i % cols) * 26;
         const wy = b.y + 10 + Math.floor(i / cols) * 26;
+        ctx.fillStyle = hash2(wx, wy) < litRatio ? VISUAL.windowLit : VISUAL.windowDark;
         ctx.fillRect(wx, wy, 10, 8);
       }
       if (b.special) {
         const place = PLACES[b.special];
+        // Striped awning in the roof colour along the top edge.
+        for (let ax = b.x; ax < b.x + b.w; ax += 16) {
+          ctx.fillStyle = ((ax - b.x) / 16) % 2 === 0 ? b.roof : 'rgba(255, 255, 255, 0.85)';
+          ctx.fillRect(ax, b.y, 14, 7);
+        }
+        // Name plaque under the building instead of bare text.
         ctx.font = font(13, true);
-        ctx.fillStyle = '#1c2733';
-        ctx.textAlign = 'center';
-        ctx.fillText(place.label, b.x + b.w / 2, b.y + b.h + 16);
-        ctx.fillStyle = '#c94f42';
-        ctx.beginPath();
-        ctx.arc(b.x + b.w / 2, b.y - 8, 5, 0, Math.PI * 2);
+        const lw = ctx.measureText(place.label).width + 18;
+        ctx.fillStyle = 'rgba(8, 10, 16, 0.78)';
+        roundRect(b.x + b.w / 2 - lw / 2, b.y + b.h + 4, lw, 20, 5);
         ctx.fill();
+        ctx.fillStyle = '#ffd94f';
+        ctx.textAlign = 'center';
+        ctx.fillText(place.label, b.x + b.w / 2, b.y + b.h + 19);
       }
     }
 
-    // Street lamps.
-    ctx.fillStyle = '#2b2f36';
+    // Street lamps: pole, arm and a warm halo of light.
     for (const lamp of state.city.lamps) {
       if (lamp.x < x0 || lamp.x > x1 || lamp.y < y0 || lamp.y > y1) continue;
-      ctx.fillRect(lamp.x - 2, lamp.y - 2, 4, 4);
+      const glow = ctx.createRadialGradient(lamp.x, lamp.y - 4, 0, lamp.x, lamp.y - 4, 15);
+      glow.addColorStop(0, VISUAL.lampGlow);
+      glow.addColorStop(1, 'rgba(255, 205, 110, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(lamp.x, lamp.y - 4, 15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#2b2f36';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(lamp.x, lamp.y + 8);
+      ctx.lineTo(lamp.x, lamp.y - 4);
+      ctx.stroke();
+      ctx.fillStyle = '#ffe9a8';
+      ctx.beginPath();
+      ctx.arc(lamp.x, lamp.y - 4, 2.5, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     // District names, faint on the ground.
@@ -231,37 +381,99 @@ export function createRenderer(canvas) {
 
   function drawCarShape(car, flash) {
     const m = CAR_MODELS[car.model];
+    const seedTint = ((car.detailSeed || 0) % 100) / 100;
+    shadow(car.x, car.y, m.len / 2 + 4, m.wid / 2 + 2, 0.28);
     ctx.save();
     ctx.translate(car.x, car.y);
     ctx.rotate(car.angle);
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    roundRect(-m.len / 2 + 3, -m.wid / 2 + 3, m.len, m.wid, 7);
+    // Wheels: four dark rounded rects peeking out at the corners.
+    ctx.fillStyle = '#14161a';
+    roundRect(m.len / 2 - 11, -m.wid / 2 - 2, 10, 4, 2);
+    ctx.fill();
+    roundRect(m.len / 2 - 11, m.wid / 2 - 2, 10, 4, 2);
+    ctx.fill();
+    roundRect(-m.len / 2 + 1, -m.wid / 2 - 2, 10, 4, 2);
+    ctx.fill();
+    roundRect(-m.len / 2 + 1, m.wid / 2 - 2, 10, 4, 2);
     ctx.fill();
     ctx.fillStyle = car.color;
     roundRect(-m.len / 2, -m.wid / 2, m.len, m.wid, 7);
     ctx.fill();
-    // Windshield + roof + rear window.
-    ctx.fillStyle = 'rgba(20,30,44,0.85)';
+    // Side trim stripe + door lines.
+    ctx.fillStyle = m.trim || 'rgba(0, 0, 0, 0.25)';
+    ctx.fillRect(-m.len * 0.3, -m.wid / 2 + 1, m.len * 0.6, 2);
+    ctx.fillRect(-m.len * 0.3, m.wid / 2 - 3, m.len * 0.6, 2);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-m.len * 0.08, -m.wid / 2 + 2);
+    ctx.lineTo(-m.len * 0.08, m.wid / 2 - 2);
+    ctx.moveTo(m.len * 0.14, -m.wid / 2 + 2);
+    ctx.lineTo(m.len * 0.14, m.wid / 2 - 2);
+    ctx.stroke();
+    // Windshield + roof + rear window, with a diagonal shine on the glass.
+    ctx.fillStyle = m.glass || 'rgba(20, 30, 44, 0.85)';
     ctx.fillRect(m.len * 0.12, -m.wid / 2 + 3, m.len * 0.22, m.wid - 6);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.30)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(m.len * 0.16, m.wid / 2 - 4);
+    ctx.lineTo(m.len * 0.30, -m.wid / 2 + 4);
+    ctx.stroke();
     ctx.fillStyle = 'rgba(255,255,255,0.16)';
     ctx.fillRect(-m.len * 0.28, -m.wid / 2 + 3, m.len * 0.3, m.wid - 6);
-    // Headlights.
+    // Grille + bumper up front.
+    ctx.fillStyle = '#14161a';
+    ctx.fillRect(m.len / 2 - 2, -m.wid / 2 + 4, 2, m.wid - 8);
+    ctx.fillStyle = '#8a8f96';
+    ctx.fillRect(m.len / 2 - 4, -m.wid / 2 + 1, 2, m.wid - 2);
+    // Headlights with a soft glow, tail lights red.
+    const hg = ctx.createRadialGradient(m.len / 2, 0, 0, m.len / 2, 0, 16);
+    hg.addColorStop(0, VISUAL.headlightGlow);
+    hg.addColorStop(1, 'rgba(255, 233, 168, 0)');
+    ctx.fillStyle = hg;
+    ctx.beginPath();
+    ctx.arc(m.len / 2 + 2, 0, 16, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = '#ffe9a8';
     ctx.fillRect(m.len / 2 - 3, -m.wid / 2 + 2, 3, 5);
     ctx.fillRect(m.len / 2 - 3, m.wid / 2 - 7, 3, 5);
+    ctx.fillStyle = '#ff2b2b';
+    ctx.fillRect(-m.len / 2, -m.wid / 2 + 2, 3, 5);
+    ctx.fillRect(-m.len / 2, m.wid / 2 - 7, 3, 5);
+    // Brake lights flare red behind the car.
+    if (car.brakeLight) {
+      const bg = ctx.createRadialGradient(-m.len / 2, 0, 0, -m.len / 2, 0, 18);
+      bg.addColorStop(0, 'rgba(255, 43, 43, 0.55)');
+      bg.addColorStop(1, 'rgba(255, 43, 43, 0)');
+      ctx.fillStyle = bg;
+      ctx.beginPath();
+      ctx.arc(-m.len / 2 - 2, 0, 18, 0, Math.PI * 2);
+      ctx.fill();
+    }
     if (car.model === 'interceptor') {
-      // Black-and-white cruiser with a flashing light bar.
+      // Black-and-white cruiser with a flashing light bar and pulsing halo.
+      const phase = Math.floor(flash * 6) % 2 === 0;
+      const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, 34);
+      halo.addColorStop(0, phase ? 'rgba(255, 43, 43, 0.22)' : 'rgba(43, 107, 255, 0.22)');
+      halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(0, 0, 34, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = '#e8e8e8';
       ctx.fillRect(-m.len * 0.28, -m.wid / 2 + 2, m.len * 0.3, m.wid - 4);
-      const phase = Math.floor(flash * 6) % 2 === 0;
       ctx.fillStyle = phase ? '#ff2b2b' : '#2b6bff';
       ctx.fillRect(-6, -m.wid / 2 - 2, 12, 5);
       ctx.fillStyle = phase ? '#2b6bff' : '#ff2b2b';
       ctx.fillRect(-6, m.wid / 2 - 3, 12, 5);
     }
     if (car.model === 'liner') {
+      // Roof sign: a pale plaque with the TAXI text on it.
+      ctx.fillStyle = '#f5f0dc';
+      ctx.fillRect(-11, -4, 22, 9);
       ctx.fillStyle = '#1c2733';
-      ctx.font = font(9, true);
+      ctx.font = font(8, true);
       ctx.textAlign = 'center';
       ctx.fillText('TAXI', 0, 3);
     }
@@ -271,12 +483,23 @@ export function createRenderer(canvas) {
       ctx.strokeRect(-m.len / 2 - 4, -m.wid / 2 - 4, m.len + 8, m.wid + 8);
     }
     ctx.restore();
+    // A cop mid-bust gets a pulsing red ring on the ground.
+    if (car.busting) {
+      const pulse = 0.45 + 0.35 * Math.sin(flash * 6);
+      ctx.strokeStyle = `rgba(255, 43, 43, ${pulse.toFixed(3)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(car.x, car.y, 24 + Math.sin(flash * 6) * 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     if (car.smoke > 0.3) {
       ctx.fillStyle = 'rgba(90,90,90,0.55)';
       ctx.beginPath();
       ctx.arc(car.x - Math.cos(car.angle) * 14 + Math.sin(flash * 7) * 4, car.y - Math.sin(car.angle) * 14, 6 + Math.sin(flash * 9) * 2, 0, Math.PI * 2);
       ctx.fill();
     }
+    // Keep the per-car seed referenced so the tint reads as variation, not noise.
+    void seedTint;
   }
 
   function drawPedShape(ped) {
@@ -295,18 +518,43 @@ export function createRenderer(canvas) {
       ctx.restore();
       return;
     }
-    const bob = ped.speed > 0 ? Math.sin(ped.x * 0.35 + ped.y * 0.35) * 1.5 : 0;
+    const phase = Math.sin(ped.x * 0.35 + ped.y * 0.35);
+    const bob = ped.speed > 0 ? phase * 1.5 : 0;
     ctx.fillStyle = 'rgba(0,0,0,0.22)';
     ctx.beginPath();
     ctx.ellipse(ped.x, ped.y + 8, 7, 3, 0, 0, Math.PI * 2);
     ctx.fill();
+    // Walking legs: two small feet stepping either side of the facing line.
+    if (ped.speed > 0) {
+      const px = Math.cos(ped.angle);
+      const py = Math.sin(ped.angle);
+      const ox = -py;
+      const oy = px;
+      ctx.fillStyle = '#2b2f36';
+      ctx.beginPath();
+      ctx.arc(ped.x - px * 6 + ox * phase * 4, ped.y - py * 6 + oy * phase * 4, 3, 0, Math.PI * 2);
+      ctx.arc(ped.x - px * 6 - ox * phase * 4, ped.y - py * 6 - oy * phase * 4, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.fillStyle = ped.shirt;
     ctx.beginPath();
     ctx.arc(ped.x, ped.y + bob * 0.3, 8, 0, Math.PI * 2);
     ctx.fill();
+    // Belt line across the shirt.
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.30)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(ped.x - 6, ped.y + 4 + bob * 0.3);
+    ctx.lineTo(ped.x + 6, ped.y + 4 + bob * 0.3);
+    ctx.stroke();
     ctx.fillStyle = ped.skin;
     ctx.beginPath();
     ctx.arc(ped.x + Math.cos(ped.angle) * 3, ped.y + Math.sin(ped.angle) * 3 - 2, 5, 0, Math.PI * 2);
+    ctx.fill();
+    // Hair cap on the head.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.beginPath();
+    ctx.arc(ped.x + Math.cos(ped.angle) * 3, ped.y + Math.sin(ped.angle) * 3 - 2, 5, Math.PI, 0);
     ctx.fill();
   }
 
@@ -318,13 +566,38 @@ export function createRenderer(canvas) {
       ctx.beginPath();
       ctx.ellipse(p.x, p.y + 9, 8, 3.5, 0, 0, Math.PI * 2);
       ctx.fill();
+      // Walking legs, stepping with time.
+      if (p.moving) {
+        const phase = Math.sin(state.time * 10);
+        const px = Math.cos(p.angle);
+        const py = Math.sin(p.angle);
+        const ox = -py;
+        const oy = px;
+        ctx.fillStyle = '#1c2733';
+        ctx.beginPath();
+        ctx.arc(p.x - px * 7 + ox * phase * 4, p.y - py * 7 + oy * phase * 4, 3.5, 0, Math.PI * 2);
+        ctx.arc(p.x - px * 7 - ox * phase * 4, p.y - py * 7 - oy * phase * 4, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.fillStyle = '#e86a1c';
       ctx.beginPath();
       ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
       ctx.fill();
+      // Gold jacket stripe across the body.
+      ctx.strokeStyle = '#ffd94f';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(p.x - Math.sin(p.angle) * 7, p.y + Math.cos(p.angle) * 7);
+      ctx.lineTo(p.x + Math.sin(p.angle) * 7, p.y - Math.cos(p.angle) * 7);
+      ctx.stroke();
       ctx.fillStyle = '#f0c8a0';
       ctx.beginPath();
       ctx.arc(p.x + Math.cos(p.angle) * 4, p.y + Math.sin(p.angle) * 4 - 1, 6, 0, Math.PI * 2);
+      ctx.fill();
+      // Dark cap on the head.
+      ctx.fillStyle = '#1c2733';
+      ctx.beginPath();
+      ctx.arc(p.x + Math.cos(p.angle) * 4, p.y + Math.sin(p.angle) * 4 - 1, 6, Math.PI, 0);
       ctx.fill();
       ctx.strokeStyle = '#1c2733';
       ctx.lineWidth = 3;
@@ -339,10 +612,20 @@ export function createRenderer(canvas) {
     for (const e of state.effects) {
       const age = 1 - e.t / e.max;
       if (e.kind === 'muzzle') {
+        // Star-burst flash: a glowing core plus four spikes.
         ctx.fillStyle = `rgba(255, 214, 80, ${age})`;
         ctx.beginPath();
-        ctx.arc(e.x, e.y, 10 * age + 3, 0, Math.PI * 2);
+        ctx.arc(e.x, e.y, (10 * age + 3) * 0.6, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = `rgba(255, 230, 120, ${age})`;
+        ctx.lineWidth = 2;
+        for (let k = 0; k < 4; k++) {
+          const a = (k * Math.PI) / 2 + Math.PI / 4;
+          ctx.beginPath();
+          ctx.moveTo(e.x, e.y);
+          ctx.lineTo(e.x + Math.cos(a) * (12 * age + 6), e.y + Math.sin(a) * (12 * age + 6));
+          ctx.stroke();
+        }
       } else if (e.kind === 'tracer') {
         ctx.strokeStyle = `rgba(255, 230, 120, ${age})`;
         ctx.lineWidth = 2;
@@ -355,10 +638,22 @@ export function createRenderer(canvas) {
         ctx.beginPath();
         ctx.arc(e.x, e.y, 16 * age + 4, 0, Math.PI * 2);
         ctx.fill();
+        // Expanding shock ring.
+        ctx.strokeStyle = `rgba(255, 120, 40, ${age})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, 20 + (1 - age) * 26, 0, Math.PI * 2);
+        ctx.stroke();
       } else if (e.kind === 'sparkle') {
+        // Four-point star instead of a plain circle.
+        const r = 5 + 8 * (1 - age);
         ctx.fillStyle = `rgba(255, 217, 79, ${age})`;
         ctx.beginPath();
-        ctx.arc(e.x, e.y, 5 + 8 * (1 - age), 0, Math.PI * 2);
+        ctx.moveTo(e.x, e.y - r);
+        ctx.quadraticCurveTo(e.x, e.y, e.x + r, e.y);
+        ctx.quadraticCurveTo(e.x, e.y, e.x, e.y + r);
+        ctx.quadraticCurveTo(e.x, e.y, e.x - r, e.y);
+        ctx.quadraticCurveTo(e.x, e.y, e.x, e.y - r);
         ctx.fill();
       }
     }
@@ -375,19 +670,23 @@ export function createRenderer(canvas) {
       ctx.textAlign = 'center';
       ctx.fillText('$', s.x, s.y + 5);
     }
-    // Mission waypoint: a beacon of light plus a floating diamond.
+    // Mission waypoint: a beacon of light plus a floating diamond, in the
+    // mission's own colour.
     const target = state.missionTarget;
     if (target) {
+      const tc = target.color || '#ffd94f';
       const pulse = 0.55 + Math.sin(state.time * 5) * 0.3;
-      ctx.fillStyle = `rgba(255, 217, 79, ${pulse * 0.25})`;
+      ctx.globalAlpha = pulse * 0.25;
+      ctx.fillStyle = tc;
       ctx.fillRect(target.x - 14, target.y - 120, 28, 120);
-      ctx.fillStyle = '#ffd94f';
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = tc;
       ctx.save();
       ctx.translate(target.x, target.y - 30 + Math.sin(state.time * 3) * 6);
       ctx.rotate(Math.PI / 4);
       ctx.fillRect(-9, -9, 18, 18);
       ctx.restore();
-      ctx.strokeStyle = '#ffd94f';
+      ctx.strokeStyle = tc;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(target.x, target.y, 26 + Math.sin(state.time * 5) * 5, 0, Math.PI * 2);
@@ -439,14 +738,41 @@ export function createRenderer(canvas) {
       ctx.arc(mx + x * sx, my + y * sy, r, 0, Math.PI * 2);
       ctx.fill();
     };
-    if (state.missionTarget) dot(state.missionTarget.x, state.missionTarget.y, 5, '#ffd94f');
-    for (const cop of state.cops) dot(cop.x, cop.y, 3.5, Math.floor(state.time * 4) % 2 ? '#ff2b2b' : '#2b6bff');
+    if (state.missionTarget) {
+      // Gold ring around the mission target so it reads at a glance.
+      dot(state.missionTarget.x, state.missionTarget.y, 5, '#ffd94f');
+      ctx.strokeStyle = '#ffd94f';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(mx + state.missionTarget.x * sx, my + state.missionTarget.y * sy, 8.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (const cop of state.cops) {
+      const cx = mx + cop.x * sx;
+      const cy = my + cop.y * sy;
+      // Faint glow behind each police dot.
+      ctx.fillStyle = 'rgba(255, 43, 43, 0.25)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+      ctx.fill();
+      dot(cop.x, cop.y, 3.5, Math.floor(state.time * 4) % 2 ? '#ff2b2b' : '#2b6bff');
+    }
     const p = state.player;
-    dot(p.car ? p.car.x : p.x, p.car ? p.car.y : p.y, 4.5, '#ffffff');
+    const px = p.car ? p.car.x : p.x;
+    const py = p.car ? p.car.y : p.y;
+    dot(px, py, 4.5, '#ffffff');
+    // Dark outline so the player dot stays visible on pale ground.
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(mx + px * sx, my + py * sy, 4.5, 0, Math.PI * 2);
+    ctx.stroke();
     // Viewport rectangle.
     ctx.strokeStyle = 'rgba(255,255,255,0.5)';
     ctx.strokeRect(mx + state.camera.x * sx, my + state.camera.y * sy, VIEW_W * sx, VIEW_H * sy);
     ctx.restore();
+    // Compass tick above the map.
+    text('N', mx + mw / 2, my - 12, 11, 'rgba(255,255,255,0.8)', 'center', true);
     text('SOLMAR CITY', mx + mw / 2, my + mh + 22, 11, 'rgba(255,255,255,0.75)', 'center', true);
   }
 
@@ -458,6 +784,16 @@ export function createRenderer(canvas) {
     for (let i = 0; i < 5; i++) {
       const cx = x0 - i * 30;
       const lit = i < state.wanted;
+      if (lit) {
+        // Soft glow behind a lit star (radial fill, not slow shadowBlur).
+        const g = ctx.createRadialGradient(cx, y0, 0, cx, y0, 17);
+        g.addColorStop(0, 'rgba(255, 217, 79, 0.4)');
+        g.addColorStop(1, 'rgba(255, 217, 79, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(cx, y0, 17, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.fillStyle = lit ? '#ffd94f' : 'rgba(255,255,255,0.25)';
       ctx.strokeStyle = 'rgba(0,0,0,0.5)';
       ctx.lineWidth = 1;
@@ -484,6 +820,11 @@ export function createRenderer(canvas) {
     ctx.fillStyle = 'rgba(10, 14, 20, 0.72)';
     roundRect(14, 14, 250, 64, 10);
     ctx.fill();
+    // 1 px gloss highlight along the panel's top edge.
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.10)';
+    ctx.fillRect(18, 16, 242, 2);
+    // Cash with a soft drop shadow so it lifts off the panel.
+    text(`$${state.player.cash}`, 29, 43, 26, 'rgba(0, 0, 0, 0.45)', 'left', true);
     text(`$${state.player.cash}`, 28, 42, 26, '#7dff8a', 'left', true);
     const hpW = 150;
     const hpRatio = Math.max(0, state.player.hp / 100);
@@ -515,6 +856,8 @@ export function createRenderer(canvas) {
       ctx.fillStyle = 'rgba(10, 14, 20, 0.72)';
       roundRect((VIEW_W - w) / 2, 14, w, 34, 10);
       ctx.fill();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.10)';
+      ctx.fillRect((VIEW_W - w) / 2 + 6, 16, w - 12, 2);
       ctx.fillStyle = '#ffd94f';
       ctx.beginPath();
       ctx.arc((VIEW_W - w) / 2 + 18, 31, 5, 0, Math.PI * 2);
@@ -557,11 +900,18 @@ export function createRenderer(canvas) {
 
     // Speedometer while driving, bottom-centre.
     if (state.player.car) {
-      const kmh = Math.round(Math.abs(state.player.car.speed) * 0.36);
+      const car = state.player.car;
+      const kmh = Math.round(Math.abs(car.speed) * 0.36);
       text(`${kmh}`, VIEW_W / 2, VIEW_H - 24, 30, '#ffffff', 'center', true);
       text('km/h', VIEW_W / 2 + 46, VIEW_H - 24, 14, 'rgba(255,255,255,0.7)', 'left', true);
-      const model = CAR_MODELS[state.player.car.model];
+      const model = CAR_MODELS[car.model];
       text(model.name, VIEW_W / 2, VIEW_H - 52, 14, 'rgba(255,255,255,0.8)', 'center', true);
+      // Thin speed-ratio bar under the number.
+      const ratio = Math.max(0, Math.min(1, Math.abs(car.speed) / model.top));
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.fillRect(VIEW_W / 2 - 60, VIEW_H - 16, 120, 4);
+      ctx.fillStyle = '#ffd94f';
+      ctx.fillRect(VIEW_W / 2 - 60, VIEW_H - 16, 120 * ratio, 4);
     }
 
     // Crosshair at the mouse while on foot.
@@ -602,9 +952,30 @@ export function createRenderer(canvas) {
     // Dim the city behind the panel.
     ctx.fillStyle = 'rgba(8, 10, 16, 0.45)';
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-    text('SOLMAR', VIEW_W / 2, 150, 84, '#ffd94f', 'center', true);
-    text('HEAT', VIEW_W / 2, 232, 84, '#ff5a3c', 'center', true);
+    // Gradient title words with a drop shadow.
+    ctx.font = font(84, true);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    const g1 = ctx.createLinearGradient(VIEW_W / 2 - 200, 80, VIEW_W / 2 + 200, 160);
+    g1.addColorStop(0, '#ffe9a8');
+    g1.addColorStop(0.5, '#ffd94f');
+    g1.addColorStop(1, '#e8a923');
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillText('SOLMAR', VIEW_W / 2, 154);
+    ctx.fillStyle = g1;
+    ctx.fillText('SOLMAR', VIEW_W / 2, 150);
+    const g2 = ctx.createLinearGradient(VIEW_W / 2 - 140, 170, VIEW_W / 2 + 140, 240);
+    g2.addColorStop(0, '#ff8a5c');
+    g2.addColorStop(0.5, '#ff5a3c');
+    g2.addColorStop(1, '#d21f2b');
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillText('HEAT', VIEW_W / 2, 236);
+    ctx.fillStyle = g2;
+    ctx.fillText('HEAT', VIEW_W / 2, 232);
     text('AN OPEN-WORLD CRIME STORY  •  SOLMAR CITY', VIEW_W / 2, 272, 18, '#ffffff', 'center', true);
+    // Gold rule under the subtitle.
+    ctx.fillStyle = 'rgba(255, 217, 79, 0.6)';
+    ctx.fillRect(VIEW_W / 2 - 140, 284, 280, 2);
     const items = [];
     items.push({ key: '1', label: 'New Game' });
     if (saveData) items.push({ key: '2', label: `Continue — ${saveData.missionsDone} mission${saveData.missionsDone === 1 ? '' : 's'} done, $${saveData.cash}` });
@@ -615,6 +986,11 @@ export function createRenderer(canvas) {
       ctx.fillStyle = selected ? 'rgba(255, 217, 79, 0.9)' : 'rgba(255,255,255,0.10)';
       roundRect(VIEW_W / 2 - 220, y0 + i * 58, 440, 44, 10);
       ctx.fill();
+      // Gold accent bar on the selected row.
+      if (selected) {
+        ctx.fillStyle = '#ffd94f';
+        ctx.fillRect(VIEW_W / 2 - 220, y0 + i * 58, 4, 44);
+      }
       text(`${it.key}.  ${it.label}`, VIEW_W / 2, y0 + i * 58 + 30, 20, selected ? '#1c2733' : '#ffffff', 'center', selected);
     });
     text('WASD move  •  E enter / exit car  •  Mouse aim, click to shoot  •  F punch  •  M mute', VIEW_W / 2, 620, 15, 'rgba(255,255,255,0.75)', 'center');
@@ -728,7 +1104,8 @@ export function createRenderer(canvas) {
     for (const car of state.cars) drawCarShape(car, state.time);
     drawPlayerShape(state);
     ctx.restore();
-    // Screen space: HUD and menus.
+    // Screen space: warm sun tint + vignette, then HUD and menus.
+    drawSunTint();
     if (state.mode === 'playing' || state.mode === 'paused' || state.mode === 'missionComplete' || state.mode === 'busted' || state.mode === 'wasted') {
       drawHud(state);
     }

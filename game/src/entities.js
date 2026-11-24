@@ -18,13 +18,16 @@ export function createPlayer(x, y) {
 
 export function createCar(modelKey, x, y, angle, driver) {
   const m = CAR_MODELS[modelKey];
-  return {
+  const car = {
     id: nextId++, kind: 'car', model: modelKey,
     x, y, angle, speed: 0, hp: m.hp, maxHp: m.hp,
     color: m.color, driver: driver || 'parked',
     targetSpeed: 0, laneOffset: 0, turnAt: null, smoke: 0,
     stuckTimer: 0, siren: driver === 'cop',
   };
+  // Per-car render seed for glass tint and trim variation; no gameplay effect.
+  car.detailSeed = (car.id * 2654435761) >>> 0;
+  return car;
 }
 
 export function createPed(rng, x, y) {

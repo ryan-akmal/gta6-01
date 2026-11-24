@@ -9,6 +9,7 @@ export function createAudio() {
     muted: false,
     engineOsc: null,
     engineGain: null,
+    engineFilter: null,
     sirenOsc: null,
     sirenGain: null,
     sirenTimer: 0,
@@ -31,7 +32,7 @@ export function createAudio() {
       audio.engineOsc = audio.ctx.createOscillator();
       audio.engineOsc.type = 'sawtooth';
       audio.engineOsc.frequency.value = 55;
-      const filter = audio.ctx.createBiquadFilter();
+      const filter = audio.engineFilter = audio.engineFilter || audio.ctx.createBiquadFilter();
       filter.type = 'lowpass';
       filter.frequency.value = 420;
       audio.engineGain = audio.ctx.createGain();
@@ -67,6 +68,10 @@ export function createAudio() {
     const target = driving ? 0.05 + speedRatio * 0.1 : 0;
     audio.engineGain.gain.setTargetAtTime(target, audio.ctx.currentTime, 0.08);
     audio.engineOsc.frequency.setTargetAtTime(52 + speedRatio * 130, audio.ctx.currentTime, 0.08);
+    // The engine opens up as it revs: the low-pass cutoff follows speed.
+    if (audio.engineFilter) {
+      audio.engineFilter.frequency.setTargetAtTime(420 + speedRatio * 900, audio.ctx.currentTime, 0.1);
+    }
   };
 
   audio.setSiren = (on, dt) => {
@@ -127,6 +132,29 @@ export function createAudio() {
   audio.shot = () => noiseBurst(0.12, 0.35, 2600);
   audio.punch = () => noiseBurst(0.08, 0.25, 900);
   audio.crash = () => noiseBurst(0.22, 0.4, 700);
+  // Tyre skid: a short band-passed noise burst around 1200 Hz.
+  audio.skid = () => {
+    if (!audio.ctx || !audio.master) return;
+    try {
+      const t = audio.ctx.currentTime;
+      const len = Math.floor(audio.ctx.sampleRate * 0.25);
+      const buf = audio.ctx.createBuffer(1, len, audio.ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      const src = audio.ctx.createBufferSource();
+      src.buffer = buf;
+      const f = audio.ctx.createBiquadFilter();
+      f.type = 'bandpass';
+      f.frequency.value = 1200;
+      f.Q.value = 1.2;
+      const g = audio.ctx.createGain();
+      g.gain.value = 0.22;
+      src.connect(f);
+      f.connect(g);
+      g.connect(audio.master);
+      src.start(t);
+    } catch { /* sound is optional */ }
+  };
   audio.pickup = () => { blip(660, 0.09, 'sine', 0.22); setTimeout(() => blip(990, 0.12, 'sine', 0.22), 70); };
   audio.cash = () => { blip(880, 0.08, 'triangle', 0.2); setTimeout(() => blip(1318, 0.14, 'triangle', 0.2), 60); };
   audio.click = () => blip(520, 0.05, 'square', 0.12);

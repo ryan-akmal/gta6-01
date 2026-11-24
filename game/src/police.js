@@ -64,6 +64,7 @@ function spawnCop(state) {
   }
   const cop = createCar('interceptor', x, y, Math.atan2(py - y, px - x), 'cop');
   cop.bustTimer = 0;
+  cop.busting = false;
   state.cars.push(cop);
   state.cops.push(cop);
   return cop;
@@ -113,6 +114,8 @@ export function updatePolice(state, dt) {
     // On top of a player on foot, the officer stops to make the bust instead
     // of ramming through: brake hard and let the bust timer run.
     const closingOnFoot = p.onFoot && d < 55;
+    // The bust is on when the officer sits on a player on foot at low speed.
+    cop.busting = p.onFoot && d < 30 && Math.abs(cop.speed) < 60;
     const throttle = closingOnFoot ? 0 : (d > 60 ? aggression : 0.4);
     const { nx, ny } = driveCar(cop, throttle, steer, dt, false);
     if (closingOnFoot) cop.speed *= Math.max(0, 1 - 6 * dt);

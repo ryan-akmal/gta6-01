@@ -69,4 +69,11 @@ createServer((request, response) => {
   createReadStream(file).pipe(response);
 }).listen(port, '127.0.0.1', () => {
   console.log(`game/ is on http://localhost:${port}`);
+}).on('error', (err) => {
+  // A taken port used to die with a raw stack trace; say so plainly instead.
+  if (err.code === 'EADDRINUSE') {
+    console.error(`port ${port} is already in use; try --port <other>`);
+    process.exit(1);
+  }
+  throw err;
 });
